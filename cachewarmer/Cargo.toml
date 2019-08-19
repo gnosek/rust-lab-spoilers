@@ -1,0 +1,11 @@
+[package]
+name = "cachewarmer"
+version = "0.1.0"
+authors = ["Grzegorz Nosek <root@localdomain.pl>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1"
+futures = "0.1"
+reqwest = "0.9"
+tokio = "0.1"

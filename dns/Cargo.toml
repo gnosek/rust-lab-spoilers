@@ -1,0 +1,10 @@
+[package]
+name = "dns-spoilers"
+version = "0.1.0"
+authors = ["Grzegorz Nosek <root@localdomain.pl>"]
+edition = "2018"
+
+[dependencies]
+dns = { git = "https://github.com/gnosek/rust-lab-dns" }
+futures = "0.1"
+tokio = "0.1"
