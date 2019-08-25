@@ -1,6 +1,5 @@
 // https://github.com/rust-lang/rust-clippy/issues/3988
 #![allow(clippy::needless_lifetimes)]
-#![feature(async_await)]
 #![feature(async_closure)]
 use failure::Fail;
 use futures::compat::{Future01CompatExt, Stream01CompatExt};
