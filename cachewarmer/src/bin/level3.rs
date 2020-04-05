@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let url_file = BufReader::new(File::open(url_path)?);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::blocking::Client::new();
     for url in url_file.lines() {
         let url = url?;
         let resp = client.get(&url).send()?;

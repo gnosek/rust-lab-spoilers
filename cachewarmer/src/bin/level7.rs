@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -23,47 +24,27 @@ impl Stats {
     }
 
     fn bytes_per_sec(&self) -> Option<f64> {
-        let elapsed_msec = self.elapsed_time.as_millis();
-        if elapsed_msec == 0 {
+        let elapsed_sec = self.elapsed_time.as_secs_f64();
+        if elapsed_sec < 0.001 {
             return None;
         }
 
-        let elapsed_sec = (elapsed_msec as f64) / 1000.0;
         let bytes = self.content_length as f64;
 
         Some(bytes / elapsed_sec)
     }
 }
 
-fn get<F: FnOnce(Stats) -> Result<(), Box<dyn std::error::Error>>>(
-    client: &reqwest::Client,
-    url: &str,
-    stats_callback: F,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
-    let mut resp = client.get(url).send()?;
+    let resp = client.get(url).send()?;
     let body = resp.text()?;
     let elapsed_time = start.elapsed();
 
-    let stats = Stats {
+    Ok(Stats {
         elapsed_time,
         content_length: body.len(),
-    };
-
-    stats_callback(stats)
-}
-
-fn calc_speedup<F: FnOnce() -> Result<Duration, Box<dyn std::error::Error>>>(
-    f: F,
-) -> Result<(Duration, f64), Box<dyn std::error::Error>> {
-    let start = Instant::now();
-    let elapsed_inner = f()?;
-    let elapsed = start.elapsed();
-
-    Ok((
-        elapsed,
-        (elapsed_inner.as_millis() as f64) / (elapsed.as_millis() as f64),
-    ))
+    })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,30 +55,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading urls from {}", url_path);
 
     let url_file = BufReader::new(File::open(url_path)?);
+    let start = Instant::now();
+    let totals = Arc::new(Mutex::new(Stats::new()));
+    let mut threads = Vec::new();
 
-    let (elapsed, speedup) = calc_speedup(|| {
-        let mut totals = Stats::new();
-        let client = reqwest::Client::new();
-        for url in url_file.lines() {
-            let url = url?;
-            get(&client, &url, |req_stats| {
-                totals.aggregate(&req_stats);
-                Ok(())
-            })?;
-        }
+    for url in url_file.lines() {
+        let url = url?;
+        let totals = totals.clone();
+        threads.push(std::thread::spawn(move || {
+            let client = reqwest::blocking::Client::new();
+            let stats = get(&client, &url).unwrap();
+            totals.lock().unwrap().aggregate(&stats);
+        }));
+    }
 
-        println!(
-            "total {:?} ({:.2} bytes/sec)",
-            totals,
-            totals.bytes_per_sec().unwrap_or_default()
-        );
-        Ok(totals.elapsed_time)
-    })?;
+    for thread in threads.into_iter() {
+        thread.join().unwrap();
+    }
 
+    let totals = totals.lock().unwrap();
     println!(
-        "wall clock time: {} msec, speedup {:.2}x",
-        elapsed.as_millis(),
-        speedup
+        "total {:?} ({:.2} bytes/sec)",
+        totals,
+        totals.bytes_per_sec().unwrap_or_default()
     );
+
+    println!("wall clock time: {:?}", start.elapsed());
+
     Ok(())
 }
