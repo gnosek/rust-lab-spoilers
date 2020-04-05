@@ -34,10 +34,13 @@ impl Stats {
     }
 }
 
-fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn std::error::Error>> {
+async fn get(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
-    let resp = client.get(url).send()?;
-    let body = resp.text()?;
+    let resp = client.get(url).send().await?;
+    let body = resp.text().await?;
     let elapsed_time = start.elapsed();
 
     Ok(Stats {
@@ -46,7 +49,8 @@ fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn s
     })
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url_path = std::env::args().nth(1);
     let url_path =
         url_path.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File name missing"))?;
@@ -56,29 +60,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url_file = BufReader::new(File::open(url_path)?);
     let start = Instant::now();
     let mut totals = Stats::new();
-    let mut threads = Vec::new();
+    let client = reqwest::Client::new();
 
-    let receiver = {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        for url in url_file.lines() {
-            let url = url?;
-            let sender = sender.clone();
-            threads.push(std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let stats = get(&client, &url).unwrap();
-                sender.send(stats).unwrap();
-            }));
-        }
-
-        receiver
-    };
-
-    while let Ok(stats) = receiver.recv() {
+    for url in url_file.lines() {
+        let url = url?;
+        let stats = get(&client, &url).await?;
         totals.aggregate(&stats);
-    }
-
-    for thread in threads.into_iter() {
-        thread.join().unwrap();
     }
 
     println!(
