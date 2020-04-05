@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 dns = { git = "https://github.com/gnosek/rust-lab-dns" }
-futures = "0.1"
-tokio = "0.1"
+futures = "0.3"
+tokio = { version = "0.2", features = ["macros", "tcp", "udp", "io-util", "rt-core"] }
+tokio-util = { version = "0.3", features = ["codec"] }
