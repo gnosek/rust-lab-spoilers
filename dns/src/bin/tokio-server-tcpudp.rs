@@ -89,13 +89,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tcp_socket = TcpListener::bind(&addr).await?;
     println!("Listening on: {}", addr);
 
-    let udp = tokio::spawn(udp_server(udp_socket));
-    let tcp = tokio::spawn(tcp_server(tcp_socket));
+    let udp = udp_server(udp_socket);
+    let tcp = tcp_server(tcp_socket);
 
     let server = future::join(udp, tcp);
     let (udp_res, tcp_res) = server.await;
-    udp_res??;
-    tcp_res??;
+    udp_res?;
+    tcp_res?;
 
     Ok(())
 }
