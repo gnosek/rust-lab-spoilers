@@ -1,6 +1,5 @@
 use std::fs::File;
-use std::io;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Error, ErrorKind};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -37,6 +36,8 @@ impl Stats {
 fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
     let resp = client.get(url).send()?;
+
+    // can't rely on .content_length()
     let body = resp.text()?;
     let elapsed_time = start.elapsed();
 
@@ -48,8 +49,7 @@ fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn s
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url_path = std::env::args().nth(1);
-    let url_path =
-        url_path.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File name missing"))?;
+    let url_path = url_path.ok_or(Error::new(ErrorKind::NotFound, "File name missing"))?;
 
     println!("Loading urls from {}", url_path);
 

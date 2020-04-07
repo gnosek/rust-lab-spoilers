@@ -1,6 +1,5 @@
 use std::fs::File;
-use std::io;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Error, ErrorKind};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -40,6 +39,8 @@ async fn get(
 ) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
     let resp = client.get(url).send().await?;
+
+    // can't rely on .content_length()
     let body = resp.text().await?;
     let elapsed_time = start.elapsed();
 
@@ -52,8 +53,7 @@ async fn get(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url_path = std::env::args().nth(1);
-    let url_path =
-        url_path.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File name missing"))?;
+    let url_path = url_path.ok_or(Error::new(ErrorKind::NotFound, "File name missing"))?;
 
     println!("Loading urls from {}", url_path);
 
@@ -61,7 +61,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut totals = Stats::new();
     let client = reqwest::Client::new();
-
     for url in url_file.lines() {
         let url = url?;
         let stats = get(&client, &url).await?;
