@@ -1,3 +1,4 @@
+use futures::stream::StreamExt;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
 use std::time::{Duration, Instant};
@@ -35,10 +36,10 @@ impl Stats {
 
 async fn get(
     client: &reqwest::Client,
-    url: &str,
+    url: String,
 ) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
-    let resp = client.get(url).send().await?;
+    let resp = client.get(&url).send().await?;
 
     // can't rely on .content_length()
     let body = resp.text().await?;
@@ -61,10 +62,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut totals = Stats::new();
     let client = reqwest::Client::new();
+    let mut requests = futures::stream::FuturesUnordered::new();
+
     for url in url_file.lines() {
         let url = url?;
-        let stats = get(&client, &url).await?;
-        totals.aggregate(&stats);
+        requests.push(get(&client, url));
+    }
+
+    while let Some(stats) = requests.next().await {
+        totals.aggregate(&stats?);
     }
 
     println!(

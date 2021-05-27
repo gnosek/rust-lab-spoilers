@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
 use std::time::{Duration, Instant};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Stats {
     elapsed_time: Duration,
     content_length: usize,
@@ -33,11 +33,7 @@ impl Stats {
     }
 }
 
-fn get<F: FnOnce(Stats) -> Result<(), Box<dyn std::error::Error>>>(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    stats_callback: F,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn std::error::Error>> {
     let start = Instant::now();
     let resp = client.get(url).send()?;
 
@@ -45,12 +41,10 @@ fn get<F: FnOnce(Stats) -> Result<(), Box<dyn std::error::Error>>>(
     let body = resp.text()?;
     let elapsed_time = start.elapsed();
 
-    let stats = Stats {
+    Ok(Stats {
         elapsed_time,
         content_length: body.len(),
-    };
-
-    stats_callback(stats)
+    })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,13 +57,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut totals = Stats::new();
     let client = reqwest::blocking::Client::new();
-
     for url in url_file.lines() {
         let url = url?;
-        get(&client, &url, |req_stats| {
-            totals.aggregate(&req_stats);
-            Ok(())
-        })?;
+        let stats = get(&client, &url)?;
+        println!(
+            "{} -> {:?} ({:.2} bytes/sec)",
+            url,
+            stats,
+            stats.bytes_per_sec().unwrap_or_default()
+        );
+
+        totals.aggregate(&stats);
     }
 
     println!(
@@ -81,4 +79,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("wall clock time: {:?}", start.elapsed());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Stats;
+    use std::time::Duration;
+
+    #[test]
+    fn test_stats_aggregate() {
+        let mut stats = Stats {
+            elapsed_time: Duration::from_millis(500),
+            content_length: 1000,
+        };
+
+        stats.aggregate(&Stats {
+            elapsed_time: Duration::from_millis(1500),
+            content_length: 3000,
+        });
+
+        assert_eq!(
+            stats,
+            Stats {
+                elapsed_time: Duration::from_secs(2),
+                content_length: 4000,
+            }
+        );
+    }
+
+    #[test]
+    fn test_stats_aggregate_empty() {
+        let mut stats = Stats {
+            elapsed_time: Duration::from_millis(500),
+            content_length: 1000,
+        };
+
+        let stats2 = stats.clone();
+        stats.aggregate(&Stats::new());
+
+        assert_eq!(stats, stats2);
+    }
+
+    #[test]
+    fn test_stats_bytes_per_sec() {
+        let stats = Stats {
+            elapsed_time: Duration::from_millis(500),
+            content_length: 1000,
+        };
+
+        assert_eq!(stats.bytes_per_sec(), Some(2000f64))
+    }
+
+    #[test]
+    fn test_stats_bytes_per_sec_empty() {
+        let stats = Stats::new();
+
+        assert_eq!(stats.bytes_per_sec(), None)
+    }
 }

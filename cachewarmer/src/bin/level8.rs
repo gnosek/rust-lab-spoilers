@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -55,32 +56,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let url_file = BufReader::new(File::open(url_path)?);
     let start = Instant::now();
-    let mut totals = Stats::new();
+    let totals = Arc::new(Mutex::new(Stats::new()));
     let mut threads = Vec::new();
-
-    let receiver = {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        for url in url_file.lines() {
-            let url = url?;
-            let sender = sender.clone();
-            threads.push(std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let stats = get(&client, &url).unwrap();
-                sender.send(stats).unwrap();
-            }));
-        }
-
-        receiver
-    };
-
-    while let Ok(stats) = receiver.recv() {
-        totals.aggregate(&stats);
+    for url in url_file.lines() {
+        let url = url?;
+        let totals = totals.clone();
+        threads.push(std::thread::spawn(move || {
+            let client = reqwest::blocking::Client::new();
+            let stats = get(&client, &url).unwrap();
+            totals.lock().unwrap().aggregate(&stats);
+        }));
     }
 
     for thread in threads.into_iter() {
         thread.join().unwrap();
     }
 
+    let totals = totals.lock().unwrap();
     println!(
         "total {:?} ({:.2} bytes/sec)",
         totals,

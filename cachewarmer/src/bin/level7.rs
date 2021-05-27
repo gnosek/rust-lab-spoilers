@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -34,7 +33,11 @@ impl Stats {
     }
 }
 
-fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn std::error::Error>> {
+fn get<F: FnOnce(Stats) -> Result<(), Box<dyn std::error::Error>>>(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    stats_callback: F,
+) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let resp = client.get(url).send()?;
 
@@ -42,10 +45,12 @@ fn get(client: &reqwest::blocking::Client, url: &str) -> Result<Stats, Box<dyn s
     let body = resp.text()?;
     let elapsed_time = start.elapsed();
 
-    Ok(Stats {
+    let stats = Stats {
         elapsed_time,
         content_length: body.len(),
-    })
+    };
+
+    stats_callback(stats)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,23 +61,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let url_file = BufReader::new(File::open(url_path)?);
     let start = Instant::now();
-    let totals = Arc::new(Mutex::new(Stats::new()));
-    let mut threads = Vec::new();
+    let mut totals = Stats::new();
+    let client = reqwest::blocking::Client::new();
+
     for url in url_file.lines() {
         let url = url?;
-        let totals = totals.clone();
-        threads.push(std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let stats = get(&client, &url).unwrap();
-            totals.lock().unwrap().aggregate(&stats);
-        }));
+        get(&client, &url, |req_stats| {
+            totals.aggregate(&req_stats);
+            Ok(())
+        })?;
     }
 
-    for thread in threads.into_iter() {
-        thread.join().unwrap();
-    }
-
-    let totals = totals.lock().unwrap();
     println!(
         "total {:?} ({:.2} bytes/sec)",
         totals,
