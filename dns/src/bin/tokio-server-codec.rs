@@ -38,7 +38,7 @@ async fn tcp_handle_connection(socket: TcpStream, addr: SocketAddr) -> Result<()
     Ok(())
 }
 
-async fn tcp_server(mut socket: TcpListener) -> Result<(), io::Error> {
+async fn tcp_server(socket: TcpListener) -> Result<(), io::Error> {
     loop {
         let (conn_socket, addr) = socket.accept().await?;
         tokio::spawn(tcp_handle_connection(conn_socket, addr));

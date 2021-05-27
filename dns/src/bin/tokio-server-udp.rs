@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::{env, io};
 use tokio::net::UdpSocket;
 
-async fn udp_server(mut socket: UdpSocket) -> Result<(), io::Error> {
+async fn udp_server(socket: UdpSocket) -> Result<(), io::Error> {
     let mut buf = vec![0u8; 1024];
     loop {
         let (nread, addr) = socket.recv_from(&mut buf).await?;

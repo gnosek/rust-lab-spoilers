@@ -9,7 +9,7 @@ use std::{env, io};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio_util::codec::LengthDelimitedCodec;
 
-async fn udp_server(mut socket: UdpSocket) -> Result<(), io::Error> {
+async fn udp_server(socket: UdpSocket) -> Result<(), io::Error> {
     let mut buf = vec![0u8; 1024];
     loop {
         let (nread, addr) = socket.recv_from(&mut buf).await?;
@@ -73,7 +73,7 @@ async fn tcp_handle_connection(socket: TcpStream, addr: SocketAddr) -> Result<()
     Ok(())
 }
 
-async fn tcp_server(mut socket: TcpListener) -> Result<(), io::Error> {
+async fn tcp_server(socket: TcpListener) -> Result<(), io::Error> {
     loop {
         let (conn_socket, addr) = socket.accept().await?;
         tokio::spawn(tcp_handle_connection(conn_socket, addr));
